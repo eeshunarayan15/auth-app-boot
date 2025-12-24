@@ -4,12 +4,14 @@ import com.eeshu.auth.dto.UserCreateRequest;
 import com.eeshu.auth.dto.UserDto;
 import com.eeshu.auth.response.ApiResponse;
 import com.eeshu.auth.service.UserService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -17,8 +19,10 @@ import org.springframework.web.bind.annotation.RestController;
 public class UserControllerImpl  implements UserController{
     private  final ModelMapper modelMapper;
     private  final UserService userService;
+    @PostMapping("/signup")
     @Override
-    public ResponseEntity<ApiResponse<UserDto>> createUser(UserCreateRequest userCreateRequest) {
+    public ResponseEntity<ApiResponse<UserDto>> createUser(@Valid @RequestBody UserCreateRequest userCreateRequest) {
+        System.out.println(userCreateRequest);
         UserDto user = userService.createUser(userCreateRequest);
         ApiResponse<UserDto> userResponse = new ApiResponse<>("Success", "User saved Successfully", user);
 
@@ -40,8 +44,12 @@ public class UserControllerImpl  implements UserController{
         return null;
     }
 
+    @GetMapping("/users")
     @Override
-    public UserDto getAllUsers() {
-        return null;
+    public ResponseEntity<List<UserDto>> getAllUsers() {
+
+        List<UserDto> allUsers = userService.getAllUsers();
+        ApiResponse<List<UserDto>> listApiResponse = new ApiResponse<>("Sucess", "Users Found", allUsers);
+        return ResponseEntity.status(HttpStatus.OK).body(allUsers);
     }
 }

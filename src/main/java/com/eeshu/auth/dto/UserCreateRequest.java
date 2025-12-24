@@ -1,15 +1,45 @@
 package com.eeshu.auth.dto;
 
 import com.eeshu.auth.model.Provider;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.*;
+import lombok.*;
 
+@Getter
+@Setter
+@AllArgsConstructor
+@NoArgsConstructor
+@Builder
 public class UserCreateRequest {
 
+    @NotBlank(message = "Username is required")
+    @Size(min = 3, max = 50, message = "Username must be between 3 and 50 characters")
+    @Pattern(regexp = "^[a-zA-Z0-9_]+$", message = "Username can only contain letters, numbers, and underscores")
     private String username;
+
+    @NotBlank(message = "Email is required")
+    @Email(message = "Email must be valid")
+    @Size(max = 100, message = "Email must not exceed 100 characters")
     private String email;
-    private String password;   // only for LOCAL
+
+    @NotBlank(message = "Password is required")
+    @Size(min = 8, max = 100, message = "Password must be between 8 and 100 characters")
+    // Optional: Add password strength validation
+    // @Pattern(regexp = "^(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z])(?=.*[@#$%^&+=]).*$",
+    //          message = "Password must contain at least one digit, one lowercase, one uppercase, and one special character")
+    private String password;
+
+    @Size(max = 50, message = "First name must not exceed 50 characters")
     private String firstName;
+
+    @Size(max = 50, message = "Last name must not exceed 50 characters")
     private String lastName;
+
+    @Pattern(regexp = "^[0-9]{10,15}$", message = "Phone number must be between 10 and 15 digits")
     private String phone;
+
+    @Valid  // Validates nested AddressDto if present
     private AddressDto address;
+
     private Provider provider; // OPTIONAL (OAuth only)
 }

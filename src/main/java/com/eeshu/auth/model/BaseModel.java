@@ -1,12 +1,11 @@
 package com.eeshu.auth.model;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.Id;
-import jakarta.persistence.MappedSuperclass;
+import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UuidGenerator;
+import org.hibernate.type.SqlTypes;
 
 import java.util.UUID;
 
@@ -16,8 +15,8 @@ import java.util.UUID;
 public abstract class BaseModel {
 
     @Id
-    @GeneratedValue
-    @UuidGenerator
-    @Column(columnDefinition = "CHAR(36)", updatable = false, nullable = false)
+@GeneratedValue(strategy = GenerationType.UUID)
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(length = 36, nullable = false, updatable = false)
     private UUID id;
 }
