@@ -20,7 +20,7 @@ import java.util.Set;
 @AllArgsConstructor
 @NoArgsConstructor
 @Entity
-
+@ToString
 @Builder
 @Table(
         name = "users",

@@ -1,5 +1,6 @@
 package com.eeshu.auth.security;
 
+import com.eeshu.auth.model.User;
 import com.eeshu.auth.repository.UserRepository;
 import io.jsonwebtoken.*;
 import jakarta.servlet.FilterChain;
@@ -12,13 +13,13 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.security.web.authentication.WebAuthenticationDetails;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -27,51 +28,119 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Slf4j
 public class JwtsAuthenticationFilter extends OncePerRequestFilter {
-    private  final  JwtService jwtService;
-    private  final UserRepository userRepository;
+    private final JwtService jwtService;
+    private final UserRepository userRepository;
+
     @Override
     protected void doFilterInternal(
             HttpServletRequest request,
             HttpServletResponse response,
             FilterChain filterChain) throws ServletException, IOException {
-        String header=request.getHeader("Authorization");
-        log.debug("Authorization header: {}", header);
+
+        String header = request.getHeader("Authorization");
+
+        // If no Authorization header or doesn't start with Bearer, skip authentication
         if (header == null || !header.startsWith("Bearer ")) {
+            log.debug("No valid Authorization header found, skipping JWT authentication");
             filterChain.doFilter(request, response);
             return;
         }
 
+        try {
+            // Extract token
+            String token = header.substring(7);
+            log.debug("Processing JWT token for request: {} {}", request.getMethod(), request.getRequestURI());
 
-            String token=header.substring(7);
-            try {
-                Jws<Claims> claims = jwtService.parse(token);
-                Claims payload = claims.getPayload();
-
-                String userId = claims.getPayload().getSubject();
-                UUID uuid = UUID.fromString(userId);
-                userRepository.findById(uuid).ifPresent(user -> {
-                    //user milchuka h ab hame
-                    List<GrantedAuthority> authorities = user.getRoles() == null ? List.of() : user.getRoles().stream().map(role -> new SimpleGrantedAuthority(role.getName())).collect(Collectors.toList());
-
-                    UsernamePasswordAuthenticationToken authentication= new UsernamePasswordAuthenticationToken(user.getEmail(),null,authorities);
-                    authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                    SecurityContextHolder.getContext().setAuthentication(authentication);
-                });
-                boolean b = jwtService.validateToken(token);
-            } catch (ExpiredJwtException e) {
-                e.printStackTrace();
-
-            }catch (MalformedJwtException e){
-                e.printStackTrace();
-
-            }catch (JwtException e){
-                e.printStackTrace();
-
-            }catch (Exception e){
-                e.printStackTrace();
-
+            // Validate token (this also parses it)
+            if (!jwtService.validateToken(token)) {
+                log.warn("Invalid JWT token");
+                filterChain.doFilter(request, response);
+                return;
             }
 
-       filterChain.doFilter(request,response);
+            // Check if it's an access token (not refresh token)
+            if (!jwtService.isAccessToken(token)) {
+                log.warn("Refresh token used in place of access token");
+                filterChain.doFilter(request, response);
+                return;
+            }
+
+            // Extract user ID from token
+            UUID userId = jwtService.getUserIdFromToken(token);
+            log.debug("Extracted user ID from token: {}", userId);
+
+            // Load user from database
+            User user = userRepository.findById(userId)
+                    .orElseThrow(() -> {
+                        log.error("User not found with ID: {}", userId);
+                        return new UsernameNotFoundException("User not found with ID: " + userId);
+                    });
+
+            // Check if user is enabled
+            if (!user.isEnabled()) {
+                log.warn("User account is disabled: {}", user.getEmail());
+                filterChain.doFilter(request, response);
+                return;
+            }
+
+            // Extract authorities from user roles
+            List<GrantedAuthority> authorities = user.getRoles() != null && !user.getRoles().isEmpty()
+                    ? user.getRoles().stream()
+                    .map(role -> new SimpleGrantedAuthority(role.getName()))
+                    .collect(Collectors.toList())
+                    : Collections.emptyList();
+
+            log.debug("User roles: {}", authorities);
+
+            // Create authentication token
+            UsernamePasswordAuthenticationToken authentication =
+                    new UsernamePasswordAuthenticationToken(
+                            user.getEmail(),
+                            null,
+                            authorities
+                    );
+
+            // Set additional details
+            authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+
+            // Set authentication in security context
+            SecurityContextHolder.getContext().setAuthentication(authentication);
+
+            log.debug("Authentication set successfully for user: {}", user.getEmail());
+
+        } catch (ExpiredJwtException e) {
+            log.error("JWT token has expired: {}", e.getMessage());
+            SecurityContextHolder.clearContext();
+        } catch (MalformedJwtException e) {
+            log.error("Malformed JWT token: {}", e.getMessage());
+            SecurityContextHolder.clearContext();
+        } catch (SignatureException e) {
+            log.error("Invalid JWT signature: {}", e.getMessage());
+            SecurityContextHolder.clearContext();
+        } catch (UnsupportedJwtException e) {
+            log.error("Unsupported JWT token: {}", e.getMessage());
+            SecurityContextHolder.clearContext();
+        } catch (IllegalArgumentException e) {
+            log.error("JWT token compact of handler are invalid: {}", e.getMessage());
+            SecurityContextHolder.clearContext();
+        } catch (UsernameNotFoundException e) {
+            log.error("User not found: {}", e.getMessage());
+            SecurityContextHolder.clearContext();
+        } catch (Exception e) {
+            log.error("Unexpected error during JWT authentication: {}", e.getMessage(), e);
+            SecurityContextHolder.clearContext();
+        }
+
+        // Always continue the filter chain
+        filterChain.doFilter(request, response);
+    }
+
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) throws ServletException {
+        // Skip filter for public endpoints (optional optimization)
+        String path = request.getRequestURI();
+        return path.startsWith("/api/v1/auth/signin") ||
+                path.startsWith("/api/v1/auth/signup") ||
+                path.startsWith("/api/v1/auth/register");
     }
 }

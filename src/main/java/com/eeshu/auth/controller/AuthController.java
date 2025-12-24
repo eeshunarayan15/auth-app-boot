@@ -8,4 +8,5 @@ import com.eeshu.auth.response.ApiResponse;
 
 public interface AuthController {
     public ResponseEntity<ApiResponse<LoginResponse>> register(LoginRequest loginRequest) ;
+   ResponseEntity<ApiResponse<LoginResponse>> signin(LoginRequest loginRequest);
 }

@@ -8,8 +8,12 @@ import lombok.*;
 @AllArgsConstructor
 @NoArgsConstructor
 public class LoginResponse {
-    private String email;
-    private String token;
+    String token;
+    String refreshToken;
+    String expiresIn;
+    String tokenType;
+
+    UserDto userDto;
 
 
 }

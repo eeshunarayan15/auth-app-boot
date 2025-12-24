@@ -19,7 +19,7 @@ import java.util.List;
 public class UserControllerImpl  implements UserController{
     private  final ModelMapper modelMapper;
     private  final UserService userService;
-    @PostMapping("/signup")
+    @PostMapping("/users")
     @Override
     public ResponseEntity<ApiResponse<UserDto>> createUser(@Valid @RequestBody UserCreateRequest userCreateRequest) {
         System.out.println(userCreateRequest);

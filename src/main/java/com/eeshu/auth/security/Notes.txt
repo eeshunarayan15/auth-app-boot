@@ -1,0 +1,322 @@
+# JWT Authentication Filter - Complete Guide with Real-World Examples
+
+## 🎯 What Does This Filter Do?
+
+This filter acts as a **security checkpoint** that runs **BEFORE** your controller methods execute. It intercepts HTTP requests and validates JWT tokens to authenticate users.
+
+---
+
+## 📋 When Does This Filter Run?
+
+### ✅ **Filter WILL Run For:**
+- Any endpoint that requires authentication
+- Protected API endpoints (e.g., `/api/v1/user/profile`, `/api/v1/orders`)
+- Requests with `Authorization: Bearer <token>` header
+
+### ❌ **Filter WILL NOT Run For:**
+- Public endpoints (due to `shouldNotFilter()` method):
+  - `/api/v1/auth/register`
+  - `/api/v1/auth/login`
+  - `/api/v1/auth/signup`
+- Requests to static resources (if configured)
+
+---
+
+## 🔄 Access Token vs Refresh Token
+
+### **Access Token (Short-lived: 15 mins - 1 hour)**
+- Used for **regular API calls**
+- Contains user info & permissions
+- **This filter validates access tokens**
+
+### **Refresh Token (Long-lived: 7-30 days)**
+- Used **ONLY to get new access tokens**
+- Should be sent to **dedicated refresh endpoint** (`/api/v1/auth/refresh`)
+- **This filter REJECTS refresh tokens** for regular API calls
+
+---
+
+## 🛍️ Real-World Examples
+
+### **Example 1: Amazon - Browsing & Adding to Cart**
+
+#### Scenario 1: User Browses Products (No Authentication)
+```
+Request: GET /api/v1/products
+Headers: (none)
+
+Filter Action: ❌ Skips - No Authorization header
+Result: ✅ Request proceeds to controller
+Response: Returns product list (public data)
+```
+
+#### Scenario 2: User Adds Item to Cart (Authenticated)
+```
+Request: POST /api/v1/cart/add
+Headers: Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Body: { "productId": "12345", "quantity": 2 }
+
+Filter Action: ✅ Runs
+1. Extracts token from header
+2. Validates token (signature, expiration)
+3. Checks if it's ACCESS token ✓
+4. Gets userId from token
+5. Loads user from database
+6. Creates authentication object
+7. Sets in SecurityContext
+
+Result: ✅ Request proceeds with authenticated user
+Response: Cart updated successfully
+```
+
+#### Scenario 3: Access Token Expired (User browsing for 2 hours)
+```
+Request: GET /api/v1/cart
+Headers: Authorization: Bearer <expired_access_token>
+
+Filter Action: ✅ Runs
+1. Extracts token
+2. Validates token → ExpiredJwtException thrown
+3. Logs: "JWT token has expired"
+4. Clears SecurityContext
+5. Request proceeds WITHOUT authentication
+
+Result: ❌ Controller sees unauthenticated request
+Response: 401 Unauthorized - "Please login again"
+
+Frontend Action:
+→ Calls /api/v1/auth/refresh with refresh_token
+→ Gets new access_token
+→ Retries original request with new token
+```
+
+---
+
+### **Example 2: Flipkart - Order Management**
+
+#### Scenario 1: View Order History (Valid Token)
+```
+Request: GET /api/v1/orders/history
+Headers: Authorization: Bearer <valid_access_token>
+
+Filter Action: ✅ Runs
+1. Token valid ✓
+2. Is access token ✓
+3. User found ✓
+4. User enabled ✓
+5. Roles extracted: [ROLE_USER]
+6. Authentication set
+
+SecurityContext now contains:
+- Username: user@flipkart.com
+- Authorities: [ROLE_USER]
+
+Result: ✅ Controller accesses authenticated user
+Response: Returns order history for that user
+```
+
+#### Scenario 2: Admin Views All Orders (Role-based)
+```
+Request: GET /api/v1/admin/orders
+Headers: Authorization: Bearer <admin_access_token>
+
+Filter Action: ✅ Runs
+1. Token valid ✓
+2. Is access token ✓
+3. User found ✓
+4. Roles extracted: [ROLE_ADMIN, ROLE_USER]
+5. Authentication set
+
+Result: ✅ Request proceeds
+Controller @PreAuthorize("hasRole('ADMIN')") → Passes ✓
+Response: Returns all orders
+```
+
+#### Scenario 3: Someone Tries Using Refresh Token for API Call
+```
+Request: GET /api/v1/orders/history
+Headers: Authorization: Bearer <refresh_token>
+
+Filter Action: ✅ Runs
+1. Token valid (not expired) ✓
+2. Is access token? → NO ❌
+3. Logs: "Refresh token used in place of access token"
+4. Does NOT set authentication
+5. Request proceeds WITHOUT authentication
+
+Result: ❌ Controller sees unauthenticated request
+Response: 401 Unauthorized
+
+Why? Refresh tokens should ONLY be used at /auth/refresh endpoint
+```
+
+---
+
+### **Example 3: Facebook - Post & Comment**
+
+#### Scenario 1: User Posts Status (Success)
+```
+Request: POST /api/v1/posts
+Headers: Authorization: Bearer <valid_access_token>
+Body: { "content": "Hello World!" }
+
+Filter Flow:
+1. Extract token → Success ✓
+2. Validate token → Valid ✓
+3. Check token type → Access token ✓
+4. Get userId: 550e8400-e29b-41d4-a716-446655440000
+5. Load user from DB → Found ✓
+6. Check user.enabled → true ✓
+7. Extract roles → [ROLE_USER]
+8. Create authentication
+9. Set in SecurityContext
+
+Controller receives request with:
+- User ID: 550e8400...
+- Email: john@facebook.com
+- Roles: [ROLE_USER]
+
+Response: Post created successfully
+```
+
+#### Scenario 2: User Account Disabled (Banned)
+```
+Request: POST /api/v1/posts
+Headers: Authorization: Bearer <valid_access_token>
+
+Filter Flow:
+1. Extract token → Success ✓
+2. Validate token → Valid ✓
+3. Check token type → Access token ✓
+4. Get userId → Success ✓
+5. Load user from DB → Found ✓
+6. Check user.enabled → FALSE ❌
+7. Logs: "User account is disabled: john@facebook.com"
+8. Does NOT set authentication
+9. Request proceeds WITHOUT authentication
+
+Result: ❌ 401 Unauthorized
+Response: "Your account has been disabled"
+```
+
+#### Scenario 3: Token Signature Tampered
+```
+Request: GET /api/v1/feed
+Headers: Authorization: Bearer eyJhbGc...TAMPERED...
+
+Filter Flow:
+1. Extract token → Success ✓
+2. Validate token → SignatureException thrown ❌
+3. Logs: "Invalid JWT signature"
+4. Clears SecurityContext
+5. Request proceeds WITHOUT authentication
+
+Result: ❌ 401 Unauthorized
+Response: "Invalid token"
+```
+
+---
+
+## 🔐 Complete Authentication Flow (Amazon Checkout Example)
+
+### **Step 1: User Logs In**
+```
+POST /api/v1/auth/login
+Body: { "email": "user@amazon.com", "password": "pass123" }
+
+Filter: ❌ Doesn't run (public endpoint)
+
+Response:
+{
+  "access_token": "eyJhbGc...expires_in_15_mins",
+  "refresh_token": "eyJhbGc...expires_in_30_days",
+  "expires_in": 900
+}
+
+Frontend stores both tokens:
+- access_token → Memory/SessionStorage
+- refresh_token → Secure HttpOnly Cookie
+```
+
+### **Step 2: User Adds Items to Cart (Next 15 minutes)**
+```
+POST /api/v1/cart/add (x10 requests over 15 mins)
+Headers: Authorization: Bearer <access_token>
+
+Filter: ✅ Runs every time
+- Validates access token ✓
+- Authenticates user ✓
+- Request succeeds ✓
+```
+
+### **Step 3: User Proceeds to Checkout (After 20 minutes)**
+```
+POST /api/v1/checkout
+Headers: Authorization: Bearer <access_token>
+
+Filter: ✅ Runs
+- Token expired! ExpiredJwtException ❌
+- Clears authentication
+- Request fails → 401 Unauthorized
+
+Frontend detects 401:
+1. Calls POST /api/v1/auth/refresh
+   Headers: Authorization: Bearer <refresh_token>
+
+   Filter for /refresh endpoint:
+   - Special endpoint that EXPECTS refresh token
+   - Validates refresh token
+   - Issues NEW access_token
+
+2. Gets new access_token
+3. Retries POST /api/v1/checkout with new token
+4. Success! ✓
+```
+
+### **Step 4: User Returns After 40 Days**
+```
+POST /api/v1/orders/history
+Headers: Authorization: Bearer <old_access_token>
+
+Filter: ✅ Runs
+- Token expired ❌
+
+Frontend tries refresh:
+POST /api/v1/auth/refresh
+Headers: Authorization: Bearer <refresh_token>
+
+Refresh endpoint validates:
+- Refresh token also expired! (30 days passed) ❌
+
+Response: 401 Unauthorized - "Session expired"
+
+Action: User must login again
+```
+
+---
+
+## 🎯 Summary Table
+
+| Scenario | Filter Runs? | Token Valid? | Sets Auth? | Result |
+|----------|-------------|--------------|------------|--------|
+| Public endpoint (/login) | ❌ No | N/A | ❌ No | ✅ Proceeds |
+| No Authorization header | ✅ Yes | N/A | ❌ No | ✅ Proceeds (unauthenticated) |
+| Valid access token | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Authenticated request |
+| Expired access token | ✅ Yes | ❌ No | ❌ No | ❌ 401 Unauthorized |
+| Refresh token on API call | ✅ Yes | ✅ Yes | ❌ No | ❌ 401 Unauthorized |
+| Tampered token | ✅ Yes | ❌ No | ❌ No | ❌ 401 Unauthorized |
+| User disabled | ✅ Yes | ✅ Yes | ❌ No | ❌ 401 Unauthorized |
+| User not found | ✅ Yes | ✅ Yes | ❌ No | ❌ 401 Unauthorized |
+
+---
+
+## 🔑 Key Takeaways
+
+1. **Access tokens** → For regular API calls (this filter handles them)
+2. **Refresh tokens** → ONLY for `/auth/refresh` endpoint (rejected by this filter)
+3. **Filter runs on EVERY request** except explicitly skipped endpoints
+4. **Authentication is stateless** → Each request is validated independently
+5. **Token expiry is handled gracefully** → Frontend refreshes transparently
+6. **Security is layered** → Token validation + User verification + Role checks
+
+This is how **Amazon, Flipkart, Facebook, Google, Netflix** and all major platforms handle authentication! 🚀
