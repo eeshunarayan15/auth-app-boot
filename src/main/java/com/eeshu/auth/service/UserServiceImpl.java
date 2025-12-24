@@ -14,8 +14,8 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class UserServiceIml implements UserService {
-    private ModelMapper modelMapper;
-    private UserRepository userRepository;
+    private final ModelMapper modelMapper;
+    private final UserRepository userRepository;
     @Override
     public UserDto createUser(UserCreateRequest userCreateRequest) {
         User user = modelMapper.map(userCreateRequest, User.class);
