@@ -30,7 +30,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-web'
     compileOnly 'org.projectlombok:lombok'
-    developmentOnly 'org.springframework.boot:spring-boot-devtools'
+//    developmentOnly 'org.springframework.boot:spring-boot-devtools'
     runtimeOnly 'com.mysql:mysql-connector-j'
     annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
     annotationProcessor 'org.projectlombok:lombok'
@@ -53,6 +53,13 @@ dependencies {
 //https://mvnrepository.com/artifact/io.jsonwebtoken/jjwt-jackson/0.13.0
     // https://mvnrepository.com/artifact/io.jsonwebtoken/jjwt-jackson
     runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.13.0")
+
+
+// Yeh core + Swagger UI dono provide karta hai
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.0'
+
+    implementation 'org.springframework.boot:spring-boot-starter-security-oauth2-client'
+    testImplementation 'org.springframework.boot:spring-boot-starter-security-oauth2-client-test'
 }
 
 tasks.named('test') {

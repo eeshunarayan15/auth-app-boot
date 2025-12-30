@@ -1,4 +1,6 @@
 package com.eeshu.auth.model;
+
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
 import lombok.*;
@@ -9,10 +11,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
 import java.time.LocalDateTime;
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 
 @Getter
@@ -23,11 +22,8 @@ import java.util.Set;
 @ToString
 @Builder
 @Table(
-        name = "users",
-        uniqueConstraints = {
-                @UniqueConstraint(columnNames = "username"),
-                @UniqueConstraint(columnNames = "email")
-        }
+        name = "users"
+
 )
 public class User extends BaseModel implements UserDetails {
 
@@ -36,23 +32,23 @@ public class User extends BaseModel implements UserDetails {
 //    @Column(nullable = false)
 //    private String username;
 
-//    @NotBlank
+    //    @NotBlank
 //    @Size(min = 8)
 //    @Column(nullable = false)
     private String password;
 
-//    @NotBlank
+    //    @NotBlank
 //    @Email
 //    @Column(nullable = false)
     private String email;
-//
+    //
 //    @Size(max = 50)
     private String firstName;
 
-//    @Size(max = 50)
+    //    @Size(max = 50)
     private String lastName;
 
-//    @Pattern(regexp = "^[0-9]{10,15}$", message = "Invalid phone number")
+    //    @Pattern(regexp = "^[0-9]{10,15}$", message = "Invalid phone number")
     private String phone;
     @OneToOne(cascade = CascadeType.ALL)
     @JoinColumn(name = "address_id")
@@ -87,6 +83,11 @@ public class User extends BaseModel implements UserDetails {
             inverseJoinColumns = @JoinColumn(name = "role_id")
     )
     private Set<Role> roles = new HashSet<>();
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    @ToString.Exclude // Prevent circular dependency in ToString
+
+    @JsonManagedReference // Jackson ko pata chalega ki ye parent side hai
+    private List<RefreshToken> refreshTokens=new ArrayList<>();
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
@@ -107,12 +108,14 @@ public class User extends BaseModel implements UserDetails {
     public boolean isCredentialsNonExpired() {
         return true;
     }
+
     @Override
-    public  String getUsername() {
-        return  this.email;
+    public String getUsername() {
+        return this.email;
     }
+
     @Override
-    public  boolean isEnabled() {
+    public boolean isEnabled() {
         return this.enabled;
     }
 }

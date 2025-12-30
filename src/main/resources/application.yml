@@ -4,3 +4,18 @@ server:
 spring:
  profiles:
    active: dev
+ output:
+   ansi:
+     enabled: ALWAYS
+
+
+
+
+logging:
+  pattern:
+    console: |
+      %clr(%d{HH:mm:ss.SSS}){blue} %clr(|){faint} %clr(%5p){highlight} %clr(|){faint} %clr(%-30.30logger{30}){cyan} %clr(:){faint} %msg%n%wEx
+
+    # File pattern (no colors)
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} | %-5level | [%thread] | %-40.40logger{40} : %msg%n"
+

@@ -1,6 +1,9 @@
 package com.eeshu.auth.dto;
 
+
 import lombok.*;
+
+import java.time.LocalDateTime;
 
 @Getter
 @Setter
@@ -10,10 +13,7 @@ import lombok.*;
 public class LoginResponse {
     String token;
     String refreshToken;
-    String expiresIn;
+    LocalDateTime expiresIn;
     String tokenType;
-
     UserDto userDto;
-
-
 }
