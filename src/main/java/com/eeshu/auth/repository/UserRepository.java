@@ -1,7 +1,7 @@
 package com.eeshu.auth.repository;
 
 import com.eeshu.auth.model.User;
-import jakarta.validation.constraints.Email;
+
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;

@@ -11,8 +11,7 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @NoArgsConstructor
 public class LoginResponse {
-    String token;
-    String refreshToken;
+    
     LocalDateTime expiresIn;
     String tokenType;
     UserDto userDto;

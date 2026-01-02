@@ -2,7 +2,6 @@ package com.eeshu.auth.model;
 
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
-import jakarta.validation.constraints.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
@@ -50,7 +49,7 @@ public class User extends BaseModel implements UserDetails {
 
     //    @Pattern(regexp = "^[0-9]{10,15}$", message = "Invalid phone number")
     private String phone;
-    @OneToOne(cascade = CascadeType.ALL)
+    @OneToOne(cascade = CascadeType.ALL,fetch = FetchType.LAZY)
     @JoinColumn(name = "address_id")
     private Address address;
 
@@ -76,16 +75,15 @@ public class User extends BaseModel implements UserDetails {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Provider provider = Provider.LOCAL;
-    @ManyToMany(fetch = FetchType.EAGER)
+    @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(
             name = "user_roles",
             joinColumns = @JoinColumn(name = "user_id"),
             inverseJoinColumns = @JoinColumn(name = "role_id")
     )
     private Set<Role> roles = new HashSet<>();
-    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true,fetch = FetchType.LAZY)
     @ToString.Exclude // Prevent circular dependency in ToString
-
     @JsonManagedReference // Jackson ko pata chalega ki ye parent side hai
     private List<RefreshToken> refreshTokens=new ArrayList<>();
 

@@ -26,7 +26,6 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import tools.jackson.databind.ObjectMapper;
 
-
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -38,7 +37,7 @@ import java.util.Map;
 public class SecurityConfig {
     private final JwtsAuthenticationFilter jwtsAuthenticationFilter;
     private final OAuthSucessHandler oAuthSucessHandler;
-    private final ObjectMapper objectMapper;
+
     private final OAuthFailureHandler oAuthFailureHandler;
 
     @Bean
@@ -50,36 +49,44 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(
 
-                authorizeHttpRequests -> authorizeHttpRequests
-                        .requestMatchers("/api/v1/auth/signin").permitAll()
-                        .requestMatchers("/api/v1/auth/signup").permitAll()
-                        .requestMatchers("/api/v1/auth/refreshtoken").permitAll()
-                        .requestMatchers("/", "/error", "/api/v1/auth/**").permitAll()
-                        .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll().requestMatchers("/v3/api-doc/**", "/swagger-ui.html", "/swagger-ui/**").permitAll().requestMatchers("/", "/error", "/favicon.ico").permitAll().anyRequest().authenticated()
+                        authorizeHttpRequests -> authorizeHttpRequests
+                                .requestMatchers("/api/v1/auth/signin").permitAll()
+                                .requestMatchers("/api/v1/auth/signup").permitAll()
+                                .requestMatchers("/api/v1/auth/refreshtoken").permitAll()
+                                .requestMatchers("/", "/error").permitAll()
+                                .requestMatchers("/api/v1/auth/logout").permitAll() // ADD THIS LINE
+                                .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                                .requestMatchers("/v3/api-doc/**", "/swagger-ui.html", "/swagger-ui/**").permitAll()
+                                .requestMatchers("/", "/error", "/favicon.ico").permitAll().anyRequest().authenticated()
 
+                )
+                .oauth2Login(oauth2Login -> oauth2Login.successHandler(oAuthSucessHandler)
+                        .failureHandler(oAuthFailureHandler))
+                .logout(AbstractHttpConfigurer::disable)
+                .exceptionHandling(ex -> ex.authenticationEntryPoint((request, response, authException) -> {
+                    // response.sendError(401, "Unauthorized");
+                    // // Log the exception for debugging purposes
+                    // authException.printStackTrace();
+                    // response.setContentType("application/json");
+                    // String message = "Unauthorised access" + authException.getMessage();
+                    // Map<String, String> errorMap = Map.of("message", message, "status",
+                    // String.valueOf(401), "statusCode", Integer.toString(401));
+                    // var objectMapper = new ObjectMapper();
+                    // response.getWriter().write(objectMapper.writeValueAsString(errorMap));
+                    // 1. Trace hatane ke liye printStackTrace() ko delete karein
+                    log.error("Unauthorized access at {}: {}", request.getRequestURI(), authException.getMessage());
 
-        ).oauth2Login(oauth2Login -> oauth2Login.successHandler(oAuthSucessHandler).failureHandler(oAuthFailureHandler)).logout(AbstractHttpConfigurer::disable).exceptionHandling(ex -> ex.authenticationEntryPoint((request, response, authException) -> {
-//                    response.sendError(401, "Unauthorized");
-//                    // Log the exception for debugging purposes
-//                    authException.printStackTrace();
-//                    response.setContentType("application/json");
-//                    String message = "Unauthorised access" + authException.getMessage();
-//                    Map<String, String> errorMap = Map.of("message", message, "status", String.valueOf(401), "statusCode", Integer.toString(401));
-//                    var objectMapper = new ObjectMapper();
-//                    response.getWriter().write(objectMapper.writeValueAsString(errorMap));
-            // 1. Trace hatane ke liye printStackTrace() ko delete karein
-            log.error("Unauthorized access at {}: {}", request.getRequestURI(), authException.getMessage());
+                    // 2. Response setup
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.setContentType("application/json");
 
-            // 2. Response setup
-            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            response.setContentType("application/json");
+                    Map<String, String> errorMap = Map.of("message", "Unauthorized: " + authException.getMessage(),
+                            "status", "401");
 
-            Map<String, String> errorMap = Map.of("message", "Unauthorized: " + authException.getMessage(), "status", "401");
+                    // Spring ka default ObjectMapper use karein (Performance ke liye)
+                    new ObjectMapper().writeValue(response.getWriter(), errorMap);
 
-            // Spring ka default ObjectMapper use karein (Performance ke liye)
-            new ObjectMapper().writeValue(response.getWriter(), errorMap);
-
-        })).addFilterBefore(jwtsAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                })).addFilterBefore(jwtsAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 
@@ -92,7 +99,6 @@ public class SecurityConfig {
     public AuthenticationManager authenticationManager(AuthenticationConfiguration authenticationConfiguration) {
         return authenticationConfiguration.getAuthenticationManager();
     }
-
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource(@Value("${app.cors.front-end.url}") String frontendUrl) {

@@ -6,7 +6,6 @@ import com.eeshu.auth.response.ApiResponse;
 import com.eeshu.auth.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.modelmapper.ModelMapper;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -17,7 +16,7 @@ import java.util.List;
 @RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
 public class UserControllerImpl  implements UserController{
-    private  final ModelMapper modelMapper;
+  
     private  final UserService userService;
     @PostMapping("/users")
     @Override

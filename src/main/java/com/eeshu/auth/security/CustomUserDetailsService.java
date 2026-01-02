@@ -1,6 +1,6 @@
 package com.eeshu.auth.security;
 
-import com.eeshu.auth.model.User;
+
 import com.eeshu.auth.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.userdetails.UserDetails;

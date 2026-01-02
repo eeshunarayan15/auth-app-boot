@@ -23,6 +23,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.Arrays;
@@ -43,8 +44,8 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public LoginResponse register(LoginRequest loginRequest) {
-        //logic
-        //verify email
+        // logic
+        // verify email
         log.info("Registering user with email: {}", loginRequest.getEmail());
         if (userRepository.existsByEmail(loginRequest.getEmail())) {
             throw new UserAlreadyExistsException("User Already exist with email " + loginRequest.getEmail());
@@ -52,19 +53,17 @@ public class AuthServiceImpl implements AuthService {
         loginRequest.setPassword(passwordEncoder.encode(loginRequest.getPassword()));
         User user = modelMapper.map(loginRequest, User.class);
 
-//        Set<Role> role = new HashSet<>();
-//        role.add(new Role("USER"));
-//        user.setRoles(role);
-//        System.out.println(user.toString()+"user");
-//        System.out.println(user.getRoles().toString()+"user");
+        // Set<Role> role = new HashSet<>();
+        // role.add(new Role("USER"));
+        // user.setRoles(role);
+        // System.out.println(user.toString()+"user");
+        // System.out.println(user.getRoles().toString()+"user");
 
         User savUser = userRepository.save(user);
         String token = jwtService.generateToken(savUser);
         String email = savUser.getEmail();
 
         return LoginResponse.builder()
-
-                .token(token)
                 .userDto(modelMapper.map(savUser, UserDto.class))
                 .build();
     }
@@ -73,18 +72,28 @@ public class AuthServiceImpl implements AuthService {
     public LoginResponse login(LoginRequest loginRequest, HttpServletResponse response) {
 
         try {
-            Authentication authenticate = authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(loginRequest.getEmail(), loginRequest.getPassword()));
-            User user = userRepository.findByEmail(loginRequest.getEmail()).orElseThrow(() -> new BadCredentialsException("Bad credentials"));
+            Authentication authenticate = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(loginRequest.getEmail(), loginRequest.getPassword()));
+            User user = userRepository.findByEmail(loginRequest.getEmail())
+                    .orElseThrow(() -> new BadCredentialsException("Bad credentials"));
+
             if (!user.isEnabled()) {
                 throw new BadCredentialsException("User is not enabled");
             }
-            //JTI ka matlab hota hai JWT ID. Ye har token ka ek unique aadhar card number jaisa hota hai.
-//            JTI ka asli kaam kya hai?
-//            Unique Identity: Ek hi user ke paas 2-3 tokens ho sakte hain (laptop aur phone ke liye). JTI se server ko pata chalta hai ki kaun sa token kis device ka hai.
-//
-//                    Chori se bachao (Security): Agar koi hacker aapka purana token use karne ki koshish kare, toh server check karta hai ki "kya ye jti pehle use ho chuka hai?" Agar haan, toh wo usse block kar deta hai.
-//
-//            Logout Feature: Jab aap "Logout from this device" par click karte ho, toh server sirf us specific jti wale token ko database se delete ya revoke (cancel) karta hai.
+            // JTI ka matlab hota hai JWT ID. Ye har token ka ek unique aadhar card number
+            // jaisa hota hai.
+            // JTI ka asli kaam kya hai?
+            // Unique Identity: Ek hi user ke paas 2-3 tokens ho sakte hain (laptop aur
+            // phone ke liye). JTI se server ko pata chalta hai ki kaun sa token kis device
+            // ka hai.
+            //
+            // Chori se bachao (Security): Agar koi hacker aapka purana token use karne ki
+            // koshish kare, toh server check karta hai ki "kya ye jti pehle use ho chuka
+            // hai?" Agar haan, toh wo usse block kar deta hai.
+            //
+            // Logout Feature: Jab aap "Logout from this device" par click karte ho, toh
+            // server sirf us specific jti wale token ko database se delete ya revoke
+            // (cancel) karta hai.
             String jti = UUID.randomUUID().toString();
             LocalDateTime now = LocalDateTime.now();
             var refreshTokenEntity = RefreshToken.builder()
@@ -96,19 +105,25 @@ public class AuthServiceImpl implements AuthService {
                     .build();
             RefreshToken savedToken = refreshTokenRepository.save(refreshTokenEntity);
 
-
             String accessToken = jwtService.generateToken(user);
             String refreshTokenString = jwtService.generateRefreshToken(user, refreshTokenEntity.getJti());
-            //use cookie service to attach refresh token in cookie
-            cookieService.attachRefreshCookie(response, refreshTokenString, 30 * 24 * 60 * 60);
+            // use cookie service to attach refresh token in cookie
+            cookieService.attachRefreshCookie(response, refreshTokenString, cookieService.getRefreshTtlSeconds());
+            cookieService.attachAccessCookie(response, accessToken, cookieService.getAccessTtlSeconds());
             cookieService.addNoStoreHeaders(response);
-            return LoginResponse.builder()
-                    .token(accessToken)
-                    .refreshToken(refreshTokenString)
-                    .expiresIn(refreshTokenEntity.getExpiredAt())
-                    .userDto(modelMapper.map(user, UserDto.class))
-                    .build();
+            return LoginResponse
+                    .builder()
 
+                    .expiresIn(refreshTokenEntity.getExpiredAt())
+                    .userDto(UserDto.builder()
+                            .firstName(user.getFirstName())
+                            .lastName(user.getLastName())
+                            .email(user.getEmail())
+                            .phone(user.getPhone())
+                            .createdAt(user.getCreatedAt())
+                            .phone(user.getPhone())
+                            .build())
+                    .build();
 
         } catch (Exception e) {
             throw new BadCredentialsException("Bad credentials");
@@ -117,29 +132,41 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
-    public LoginResponse resfreshtoken(RefreshTokenRequest refreshTokenRequest, HttpServletRequest httpServletRequest, HttpServletResponse response) {
-        String refreshToken = readRefreshTokenFromRequest(httpServletRequest, refreshTokenRequest).orElseThrow(() -> new BadCredentialsException("Invalid Refresh Token"));
-        if(!jwtService.isRefreshToken(refreshToken)) {
-            throw  new BadCredentialsException("Invalid Refresh Token type")
-                    ;
+    @Transactional
+    public LoginResponse resfreshtoken(RefreshTokenRequest refreshTokenRequest, HttpServletRequest httpServletRequest,
+            HttpServletResponse response) {
+        log.info("A - start refresh");
+        String refreshToken = readRefreshTokenFromRequest(httpServletRequest, refreshTokenRequest)
+                .orElseThrow(() -> new BadCredentialsException("Invalid Refresh Token"));
+        log.info("B - token read");
+        if (!jwtService.isRefreshToken(refreshToken)) {
+            throw new BadCredentialsException("Invalid Refresh Token type");
         }
         String jti = jwtService.getJti(refreshToken);
+        log.info("C - jti parsed");
         UUID userIdFromToken = jwtService.getUserIdFromToken(refreshToken);
-        RefreshToken refreshTokenFromDb = refreshTokenRepository.findByJti(jti).orElseThrow(() -> new BadCredentialsException("Jti Not present in db"));
+        log.info("D - userId parsed");
+
+        RefreshToken refreshTokenFromDb = refreshTokenRepository.findByJti(jti)
+                .orElseThrow(() -> new BadCredentialsException("Jti Not present in db"));
+        log.info("E - token loaded from DB");
         if (refreshTokenFromDb.isRevoked()) {
             throw new BadCredentialsException("Refresh token is revoked");
         }
-        if(refreshTokenFromDb.getExpiredAt().isBefore(LocalDateTime.now())) {
-            throw  new BadCredentialsException("Refresh token is expired");
+        if (refreshTokenFromDb.getExpiredAt().isBefore(LocalDateTime.now())) {
+            throw new BadCredentialsException("Refresh token is expired");
         }
-        if(!refreshTokenFromDb.getUser().getId().equals(userIdFromToken)) {
-            throw  new BadCredentialsException("Refresh Token Does not belong to this user");
+        if (!refreshTokenFromDb.getUser().getId().equals(userIdFromToken)) {
+            throw new BadCredentialsException("Refresh Token Does not belong to this user");
         }
-        //refresh token rotation
+        log.info("F - token validated");
+        // refresh token rotation
         refreshTokenFromDb.setRevoked(true);
         String newJti = UUID.randomUUID().toString();
         refreshTokenFromDb.setReplacedByToken(newJti);
+        log.info("G - old token revoked");
         User user = refreshTokenFromDb.getUser();
+        log.info("H - user loaded");
         var newRefreshTokenEntity = RefreshToken.builder()
                 .jti(newJti)
                 .user(user)
@@ -148,28 +175,44 @@ public class AuthServiceImpl implements AuthService {
                 .revoked(false)
                 .build();
         refreshTokenRepository.save(newRefreshTokenEntity);
+        log.info("I - new token saved");
 
-            String accessToken = jwtService.generateToken(user);
+        String accessToken = jwtService.generateToken(user);
+        log.info("J - access token generated");
         String newRefreshToken = jwtService.generateRefreshToken(user, newJti);
-        cookieService.attachRefreshCookie(response, newRefreshToken, 30 * 24 * 60 * 60);
+        log.info("K - refresh token generated");
+        cookieService.attachAccessCookie(response, accessToken, cookieService.getAccessTtlSeconds()); // ADD THIS LINE
+        cookieService.attachRefreshCookie(response, newRefreshToken, cookieService.getRefreshTtlSeconds());
+
         cookieService.addNoStoreHeaders(response);
+        log.info("L - cookies attached");
         LoginResponse loginResponse = LoginResponse.builder()
-                .token(accessToken)
-                .refreshToken(newRefreshToken)
+                
                 .expiresIn(newRefreshTokenEntity.getExpiredAt())
-                .userDto(modelMapper.map(user, UserDto.class))
+                .userDto(UserDto.builder()
+                        .id(user.getId().toString())
+                        .email(user.getEmail())
+                        .firstName(user.getFirstName())
+                        .lastName(user.getLastName())
+                        .phone(user.getPhone())
+                        .createdAt(user.getCreatedAt())
+                        .enabled(user.isEnabled())
+                        .provider(user.getProvider())
+                
+                .build())
                 .build();
         log.info("Refresh token response: {}", loginResponse);
+        log.info("M - refresh finished");
         return loginResponse;
     }
 
-
-    private Optional<String> readRefreshTokenFromRequest(HttpServletRequest httpServletRequest, RefreshTokenRequest refreshTokenRequest) {
+    private Optional<String> readRefreshTokenFromRequest(HttpServletRequest httpServletRequest,
+            RefreshTokenRequest refreshTokenRequest) {
 
         if (httpServletRequest.getCookies() != null) {
             Optional<String> fromCookie = Arrays.stream(
-                            httpServletRequest.getCookies()
-                    ).filter(c -> cookieService.getRefreshTokenCookieName().equals(c.getName()))
+                    httpServletRequest.getCookies())
+                    .filter(c -> cookieService.getRefreshTokenCookieName().equals(c.getName()))
                     .map(Cookie::getValue)
                     .filter(v -> !v.isBlank())
                     .findFirst();
@@ -178,10 +221,11 @@ public class AuthServiceImpl implements AuthService {
                 return fromCookie;
             }
         }
-        if (refreshTokenRequest != null && refreshTokenRequest.getRefreshToken() != null && !refreshTokenRequest.getRefreshToken().isBlank()) {
+        if (refreshTokenRequest != null && refreshTokenRequest.getRefreshToken() != null
+                && !refreshTokenRequest.getRefreshToken().isBlank()) {
             return Optional.of(refreshTokenRequest.getRefreshToken());
         }
-       // custom header
+        // custom header
         String fromHeader = httpServletRequest.getHeader("X-Refresh-Token");
         if (fromHeader != null && !fromHeader.isBlank()) {
             return Optional.of(fromHeader);
@@ -189,6 +233,5 @@ public class AuthServiceImpl implements AuthService {
 
         return Optional.empty();
     }
-
 
 }

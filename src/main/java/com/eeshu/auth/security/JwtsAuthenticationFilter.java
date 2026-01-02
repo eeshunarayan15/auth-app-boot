@@ -5,6 +5,7 @@ import com.eeshu.auth.repository.UserRepository;
 import io.jsonwebtoken.*;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -36,20 +37,43 @@ public class JwtsAuthenticationFilter extends OncePerRequestFilter {
             HttpServletRequest request,
             HttpServletResponse response,
             FilterChain filterChain) throws ServletException, IOException {
+        log.info("Filter called for: {}", request.getRequestURI());
 
-        String header = request.getHeader("Authorization");
 
-        // If no Authorization header or doesn't start with Bearer, skip authentication
-        if (header == null || !header.startsWith("Bearer ")) {
-            log.debug("No valid Authorization header found, skipping JWT authentication");
+        // Try cookie FIRST
+        String token = null;
+        String authMethod = null;
+        Cookie[] cookies = request.getCookies();
+        if (cookies != null) {
+            for (Cookie cookie : cookies) {
+                log.info("Cookie: {} = {}", cookie.getName(), cookie.getValue().substring(0, Math.min(20, cookie.getValue().length())));
+                if ("access-token".equals(cookie.getName())) {
+                    token = cookie.getValue();
+                    authMethod = "COOKIE";
+                    break;
+                }
+            }
+        }
+
+// If no cookie, try header
+        if (token == null) {
+            String header = request.getHeader("Authorization");
+            if (header != null && header.startsWith("Bearer ")) {
+                token = header.substring(7);
+                authMethod = "HEADER";
+            }
+        }
+
+// If no token found, skip authentication
+        if (token == null) {
+            log.debug("No JWT token found in cookie or header");
             filterChain.doFilter(request, response);
             return;
         }
+        log.info("JWT token extracted from: {}", authMethod);
 
         try {
-            // Extract token
-            String token = header.substring(7);
-            log.debug("Processing JWT token for request: {} {}", request.getMethod(), request.getRequestURI());
+
 
             // Validate token (this also parses it)
             if (!jwtService.validateToken(token)) {
@@ -95,7 +119,7 @@ public class JwtsAuthenticationFilter extends OncePerRequestFilter {
             // Create authentication token
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(
-                            user.getEmail(),
+                            user,
                             null,
                             authorities
                     );
@@ -103,8 +127,10 @@ public class JwtsAuthenticationFilter extends OncePerRequestFilter {
             // Set additional details
             authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 
+
             // Set authentication in security context
             SecurityContextHolder.getContext().setAuthentication(authentication);
+            log.debug("Authentication set successfully for user: {}", user.getEmail());
 
             log.debug("Authentication set successfully for user: {}", user.getEmail());
 
@@ -142,7 +168,7 @@ public class JwtsAuthenticationFilter extends OncePerRequestFilter {
         return path.startsWith("/api/v1/auth/signin") ||
                 path.startsWith("/api/v1/auth/signup") ||
                 path.startsWith("/api/v1/auth/register")||
-                path.startsWith("api/v1/auth/refreshtoken")
+                path.startsWith("/api/v1/auth/refreshtoken")
                 ;
     }
 }

@@ -3,24 +3,39 @@ package com.eeshu.auth.controller;
 import com.eeshu.auth.dto.LoginRequest;
 import com.eeshu.auth.dto.LoginResponse;
 import com.eeshu.auth.dto.RefreshTokenRequest;
+import com.eeshu.auth.dto.UserDto;
+import com.eeshu.auth.model.User;
 import com.eeshu.auth.repository.RefreshTokenRepository;
+import com.eeshu.auth.repository.UserRepository;
 import com.eeshu.auth.response.ApiResponse;
+import com.eeshu.auth.security.CookieService;
+import com.eeshu.auth.security.JwtService;
 import com.eeshu.auth.service.AuthService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
+import lombok.extern.slf4j.Slf4j;
+import org.modelmapper.ModelMapper;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("api/v1/auth")
+@Slf4j
 
 @RequiredArgsConstructor
 public class AuthControllerImpl implements AuthController {
     private final AuthService authService;
+    private  final CookieService cookieService;
+    private  final JwtService jwtService;
+    private final RefreshTokenRepository refreshTokenRepository;
+    private  final UserRepository userRepository;
+    private  final ModelMapper modelMapper;
 
     @PostMapping("/signup")
     @Override
@@ -48,39 +63,67 @@ public class AuthControllerImpl implements AuthController {
 
         return ResponseEntity.status(HttpStatus.OK).body(new ApiResponse<>("Success", "Refresh Token Successfully", resfreshtoken));
     }
-//    @PostMapping("/logout")
-//    public ResponseEntity<Void> logout(HttpServletRequest request, HttpServletResponse response) {
-//
-//        // 1. Request ki Cookies mein se Refresh Token nikalna
-//        String refreshToken = cookieService.getCookieValue(request, cookieService.getRefreshTokenCookieName());
-//
-//        if (refreshToken != null) {
-//            try {
-//                // 2. Check karna ki ye naya wala "Refresh" token hi hai
-//                if (jwtService.isRefreshToken(refreshToken)) {
-//
-//                    // 3. Token ke andar se uski unique ID (JTI) nikalna
-//                    String jti = jwtService.getJti(refreshToken);
-//
-//                    // 4. DATABASE ACTION: Us specific JTI wale token ko 'revoked' mark karna
-//                    refreshTokenRepository.findByJti(jti).ifPresent(tokenEntity -> {
-//                        tokenEntity.setRevoked(true);
-//                        refreshTokenRepository.save(tokenEntity);
-//                        log.info("Successfully revoked token in DB for JTI: {}", jti);
-//                    });
-//                }
-//            } catch (Exception e) {
-//                // Agar token corrupt hai ya expire ho gaya hai, toh sirf log karein
-//                log.warn("Logout: Could not process token revocation in DB: {}", e.getMessage());
-//            }
-//        }
-//
-//        // 5. BROWSER ACTION: Browser ko command dena ki 'refresh-token' cookie delete kar de
-//        cookieService.clearRefreshCookie(response);
-//
-//        // 6. SECURITY: Browser cache clear karne ke headers (taaki back button dabane par data na dikhe)
-//        cookieService.addNoStoreHeaders(response);
-//
-//        return ResponseEntity.noContent().build(); // 204 No Content return karein
-//    }
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(HttpServletRequest request, HttpServletResponse response) {
+
+        // 1. Request ki Cookies mein se Refresh Token nikalna
+        String refreshToken = cookieService.getCookieValue(request, cookieService.getRefreshTokenCookieName());
+
+        if (refreshToken != null) {
+            try {
+                // 2. Check karna ki ye naya wala "Refresh" token hi hai
+                if (jwtService.isRefreshToken(refreshToken)) {
+
+                    // 3. Token ke andar se uski unique ID (JTI) nikalna
+                    String jti = jwtService.getJti(refreshToken);
+
+                    // 4. DATABASE ACTION: Us specific JTI wale token ko 'revoked' mark karna
+                    refreshTokenRepository.findByJti(jti).ifPresent(tokenEntity -> {
+                        tokenEntity.setRevoked(true);
+                        refreshTokenRepository.save(tokenEntity);
+                        log.info("Successfully revoked token in DB for JTI: {}", jti);
+                    });
+                }
+            } catch (Exception e) {
+                // Agar token corrupt hai ya expire ho gaya hai, toh sirf log karein
+                log.warn("Logout: Could not process token revocation in DB: {}", e.getMessage());
+            }
+        }
+
+        // 5. BROWSER ACTION: Browser ko command dena ki 'refresh-token' cookie delete kar de
+        cookieService.clearRefreshCookie(response);
+
+        // 6. SECURITY: Browser cache clear karne ke headers (taaki back button dabane par data na dikhe)
+        cookieService.addNoStoreHeaders(response);
+
+        return ResponseEntity.noContent().build(); // 204 No Content return karein
+    }
+    // In AuthController
+    @GetMapping("/me")
+    public ResponseEntity<ApiResponse<UserDto>> getCurrentUser(
+            @AuthenticationPrincipal User user
+    ) {
+        log.info("getCurrentUser called, user is: {}", user != null ? user.getEmail() : "NULL");
+
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new ApiResponse<>("Error", "Not authenticated", null));
+        }
+
+        UserDto userDto = UserDto.builder()
+                .id(user.getId().toString())
+                .email(user.getEmail())
+                .firstName(user.getFirstName())
+                .lastName(user.getLastName())
+                .phone(user.getPhone())
+                .createdAt(user.getCreatedAt())
+                .enabled(user.isEnabled())
+                .provider(user.getProvider())
+                .build();
+
+        return ResponseEntity.ok(
+                new ApiResponse<>("Success", "User retrieved", userDto)
+        );
+    }
+
 }

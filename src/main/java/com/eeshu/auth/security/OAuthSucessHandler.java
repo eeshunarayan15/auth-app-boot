@@ -5,8 +5,7 @@ import com.eeshu.auth.model.RefreshToken;
 import com.eeshu.auth.model.User;
 import com.eeshu.auth.repository.RefreshTokenRepository;
 import com.eeshu.auth.repository.UserRepository;
-import io.jsonwebtoken.Jwt;
-import jakarta.servlet.FilterChain;
+
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -90,10 +89,19 @@ public class OAuthSucessHandler implements AuthenticationSuccessHandler {
         log.info("Refresh Token persisted in DB with JTI: {}", jti);
 
         // 4. Refresh Token Cookie mein set karein
-        cookieService.attachRefreshCookie(response, refreshToken, 7 * 24 * 60 * 60);
+        // cookieService.attachRefreshCookie(response, refreshToken, 7 * 24 * 60 * 60);
 
-        // 5. React Vite (5173) par redirect karein Access Token ke saath
-        String targetUrl = "http://localhost:5173/oauth2/redirect?token=" + accessToken;
+        // // 5. React Vite (5173) par redirect karein Access Token ke saath
+        // String targetUrl = "http://localhost:5173/oauth2/redirect?token=" + accessToken;
+
+        // log.info("Redirecting user to React: {}", targetUrl);
+        // response.sendRedirect(targetUrl);
+        // 4. Set both access and refresh token cookies
+        cookieService.attachAccessCookie(response, accessToken, cookieService.getAccessTtlSeconds());
+        cookieService.attachRefreshCookie(response, refreshToken, cookieService.getRefreshTtlSeconds());
+
+        // 5. Redirect to React home page (no token in URL)
+        String targetUrl = "http://localhost:5173";
 
         log.info("Redirecting user to React: {}", targetUrl);
         response.sendRedirect(targetUrl);
